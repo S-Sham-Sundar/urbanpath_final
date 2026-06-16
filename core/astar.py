@@ -2,106 +2,71 @@
 A* Algorithm — Heuristic-Guided Shortest Path
 Developer A: Sham
 
-A* improves on Dijkstra by using a heuristic h(n) to guide the search
-toward the destination, pruning large parts of the graph.
-
 f(n) = g(n) + h(n)
-  g(n) = actual cost from src to n (same as Dijkstra's dist[n])
-  h(n) = estimated cost from n to dst (Haversine distance — admissible)
+  g(n) = actual cost from src to n
+  h(n) = Haversine straight-line distance to dst (admissible heuristic)
 
-Admissibility: h(n) never overestimates the true cost.
-  Haversine gives straight-line distance in km — always ≤ road distance.
-  This guarantees A* finds the optimal path.
-
-Performance: 3–10× faster than Dijkstra on large city graphs because
-the heuristic prunes nodes that are clearly "in the wrong direction."
-
-Complexity: O(E log V) worst case, but typically much less in practice.
+Complexity: O(E log V) worst case, typically 3–10× faster than Dijkstra.
 """
 
-from core.graph import Graph
+from core.graph import Graph, haversine
 from core.min_heap import MinHeap
 
 
 def astar(graph: Graph, src: int, dst: int) -> tuple[float, list[int]]:
     """
-    A* shortest path from src to dst using Haversine as the heuristic.
+    A* shortest path from src to dst (integer indices).
+    Uses Haversine as admissible heuristic.
 
-    Returns
-    -------
-    (distance, path)
-      distance : float     — true shortest distance
-      path     : list[int] — node IDs from src to dst
+    Returns (distance_km, path_as_index_list). Returns (inf, []) if unreachable.
     """
+    n = graph.node_count()
     INF = float("inf")
-    g_cost: dict[int, float] = {n: INF for n in graph.nodes}
-    prev: dict[int, int | None] = {n: None for n in graph.nodes}
+    g_cost = [INF] * n
+    prev = [-1] * n
     g_cost[src] = 0.0
 
-    # f = g + h; heap stores (f, node)
-    heap = MinHeap()
-    heap.push(graph.haversine(src, dst), src)
+    dst_node = graph.get_node_by_index(dst)
+    if dst_node is None:
+        return INF, []
 
-    closed: set[int] = set()
+    def h(idx: int) -> float:
+        node = graph.get_node_by_index(idx)
+        if node is None:
+            return 0.0
+        return haversine(node.lat, node.lon, dst_node.lat, dst_node.lon)
+
+    heap = MinHeap()
+    heap.push(h(src), src)
+    closed = set()
 
     while heap:
         f, u = heap.pop()
-
         if u in closed:
             continue
         closed.add(u)
-
         if u == dst:
             break
-
-        for edge in graph.neighbors(u):
-            v = edge.dst
+        for v, w in graph.neighbors_by_index(u):
             if v in closed:
                 continue
-            tentative_g = g_cost[u] + edge.weight
-            if tentative_g < g_cost[v]:
-                g_cost[v] = tentative_g
+            tg = g_cost[u] + w
+            if tg < g_cost[v]:
+                g_cost[v] = tg
                 prev[v] = u
-                h = graph.haversine(v, dst)
-                heap.push(tentative_g + h, v)
+                heap.push(tg + h(v), v)
 
+    if g_cost[dst] == INF:
+        return INF, []
     return g_cost[dst], _reconstruct(prev, src, dst)
 
 
-def _reconstruct(prev: dict, src: int, dst: int) -> list[int]:
-    if prev[dst] is None and dst != src:
+def _reconstruct(prev: list, src: int, dst: int) -> list[int]:
+    if prev[dst] == -1 and dst != src:
         return []
     path, cur = [], dst
-    while cur is not None:
+    while cur != -1:
         path.append(cur)
         cur = prev[cur]
     path.reverse()
     return path
-
-
-# ── DEMO ─────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    from core.graph import Graph
-    from core.dijkstra import dijkstra
-
-    g = Graph()
-    for nid, lat, lon, name in [
-        (0, 13.0827, 80.2707, "Central"),
-        (1, 13.0500, 80.2824, "Marina"),
-        (2, 13.0368, 80.2676, "Mylapore"),
-        (3, 13.0012, 80.2565, "Adyar"),
-    ]:
-        g.add_node(nid, lat, lon, name)
-
-    g.add_edge(0, 1, 4.2)
-    g.add_edge(1, 2, 2.1)
-    g.add_edge(2, 3, 3.8)
-    g.add_edge(0, 2, 5.5)
-    g.add_edge(0, 3, 12.0)
-
-    a_dist, a_path = astar(g, 0, 3)
-    d_dist, d_path = dijkstra(g, 0, 3)
-    print(f"A*      : {a_path}, distance={a_dist:.2f}")
-    print(f"Dijkstra: {d_path}, distance={d_dist:.2f}")
-    print("Same result:", a_dist == d_dist)
