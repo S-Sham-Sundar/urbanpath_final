@@ -1,14 +1,108 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UrbanPath</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>UrbanPath — Map Explorer</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <span class="nav-brand">UrbanPath</span>
+  <span class="nav-sub">City Graph Engine</span>
+  <a href="index.html" class="nav-btn active">01 · Map Explorer</a>
+  <a href="delivery.html" class="nav-btn">02 · Delivery Planner</a>
+</nav>
+
+<!-- ── MAP PAGE ── -->
+<div class="page">
+  <div class="map-layout">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+
+      <!-- Header -->
+      <div>
+        <span class="eyebrow">Developer B · Ajith</span>
+        <h2 class="section-title">Map Explorer</h2>
+        <p class="section-sub">A* · Dijkstra · Trie search</p>
+      </div>
+
+      <!-- Search -->
+      <div>
+        <span class="field-label">Location Search — Trie · O(k)</span>
+        <div class="search-wrap">
+          <input type="text" id="searchInput" placeholder="Type a place name…"/>
+          <ul class="search-dropdown" id="searchDropdown"></ul>
+        </div>
+      </div>
+
+      <hr class="divider"/>
+
+      <!-- Route Finder -->
+      <div>
+        <span class="field-label">Route Finder</span>
+        <input type="number" id="srcNode" placeholder="Source node ID (e.g. 0)" min="0"/>
+        <input type="number" id="dstNode" placeholder="Destination node ID (e.g. 42)" min="0"/>
+
+        <div class="toggle-row">
+          <button class="toggle-btn active" id="btnAstar" onclick="setAlgo('astar')">A*</button>
+          <button class="toggle-btn" id="btnDijkstra" onclick="setAlgo('dijkstra')">Dijkstra</button>
+        </div>
+
+        <button class="btn btn-accent" onclick="findRoute()">Find Route →</button>
+      </div>
+
+      <!-- Result -->
+      <div class="card hidden" id="resultCard">
+        <span class="eyebrow">Result</span>
+        <div class="result-distance" id="resultDist">— <span class="result-unit">km</span></div>
+        <div class="result-algo" id="resultAlgo"></div>
+      </div>
+
+      <!-- Error -->
+      <div class="error-box hidden" id="errorBox"></div>
+
+      <!-- API Menu card -->
+      <div class="menu-card">
+        <div class="menu-title">API Menu</div>
+        <div class="menu-item">
+          <span class="method-badge badge-get">GET</span>
+          <span class="menu-path">/api/search</span>
+        </div>
+        <div class="menu-item">
+          <span class="method-badge badge-get">GET</span>
+          <span class="menu-path">/api/route</span>
+        </div>
+        <div class="menu-item">
+          <span class="method-badge badge-get">GET</span>
+          <span class="menu-path">/api/mst</span>
+        </div>
+        <div class="menu-item">
+          <span class="method-badge badge-post">POST</span>
+          <span class="menu-path">/api/delivery</span>
+        </div>
+        <div class="menu-item">
+          <span class="method-badge badge-get">GET</span>
+          <span class="menu-path">/api/traffic/{id}</span>
+        </div>
+        <div class="menu-foot">est. 2026 · runs on a macbook</div>
+      </div>
+
+    </div><!-- /sidebar -->
+
+    <!-- Map -->
+    <div class="map-area">
+      <div id="map"></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
 </html>
