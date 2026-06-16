@@ -1,6 +1,6 @@
 # UrbanPath
 
-> A city-scale graph routing engine built from scratch — no Google Maps, no NetworkX, no shortcuts.
+> A city-scale graph routing engine built from scratch - no Google Maps, no NetworkX, no shortcuts.
 
 ---
 
@@ -41,10 +41,10 @@
 
 UrbanPath is a portfolio project built by two people to prove that the algorithms taught in class actually work at scale. We took the real Chennai road network from OpenStreetMap (68,610 nodes), wrote every algorithm from scratch in Python, wired it up with a FastAPI backend, and built a frontend with three pages — a map explorer, a delivery planner, and a graph traversal visualizer.
 
-No algorithm libraries were used. Every data structure — the graph, heap, trie, segment tree, union-find — is hand-written.
+No algorithm libraries were used. Every data structure - the graph, heap, trie, segment tree, union-find - is hand-written.
 
-**Dev A — Sham:** Graph, Dijkstra, A*, BFS Isochrone, MinHeap, graph data layer
-**Dev B — Ajith:** Trie, Held-Karp TSP, K-means++, Kruskal MST, Segment Tree, Union-Find, Redis caching, frontend
+**Dev A - Sham:** Graph, Dijkstra, A*, BFS Isochrone, MinHeap, graph data layer
+**Dev B - Ajith:** Trie, Held-Karp TSP, K-means++, Kruskal MST, Segment Tree, Union-Find, Redis caching, frontend
 
 ---
 
