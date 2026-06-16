@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>UrbanPath — Delivery Planner</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <span class="nav-brand">UrbanPath</span>
+  <span class="nav-sub">City Graph Engine</span>
+  <a href="index.html" class="nav-btn">01 · Map Explorer</a>
+  <a href="delivery.html" class="nav-btn active">02 · Delivery Planner</a>
+</nav>
+
+<!-- ── DELIVERY PAGE ── -->
+<div class="page">
+  <div class="delivery-page">
+
+    <!-- Header -->
+    <div class="page-header">
+      <span class="eyebrow">Developer B · Ajith</span>
+      <h1 class="page-h1">Delivery Planner</h1>
+      <p class="page-desc">Held-Karp TSP (exact, ≤ 20 stops) · K-means++ clustering (100+ stops)</p>
+    </div>
+
+    <div class="delivery-grid">
+
+      <!-- LEFT: Stops -->
+      <div>
+        <span class="field-label">Delivery Stops</span>
+        <div id="stopsList"></div>
+
+        <div class="remember">
+          Held-Karp is O(2ⁿ·n²) — exact up to 20 stops.
+          Above that, K-means++ splits stops into clusters first.
+        </div>
+
+        <button class="btn btn-primary" onclick="optimise()">Optimise Route →</button>
+        <div class="error-box hidden" id="deliveryError" style="margin-top:12px"></div>
+      </div>
+
+      <!-- RIGHT: Result -->
+      <div>
+        <span class="field-label">Optimal Route</span>
+
+        <div class="empty-state" id="emptyState">
+          Click "Optimise Route" to find<br/>the shortest delivery loop
+        </div>
+
+        <div class="hidden" id="resultSection">
+          <div class="stats-row">
+            <div class="stat-card orange">
+              <div class="stat-value orange" id="totalDist">—</div>
+              <div class="stat-label">Total Distance</div>
+            </div>
+            <div class="stat-card green">
+              <div class="stat-value green" id="strategy">—</div>
+              <div class="stat-label">Strategy</div>
+            </div>
+          </div>
+
+          <div class="route-card">
+            <div class="field-label" style="margin-bottom:10px">Visit Order</div>
+            <div id="routeOrder"></div>
+            <div class="route-algo" id="routeAlgoLabel"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="delivery.js"></script>
+</body>
+</html>
