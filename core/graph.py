@@ -1,126 +1,148 @@
 """
-Graph Representation — Adjacency List + Edge Weights
-Developer A: Sham
-
-City road network modelled as G = (V, E) where:
-  V = intersections, each with (lat, lon) coordinates
-  E = road segments weighted by distance × traffic factor
-
-Adjacency list chosen over matrix:
-  - Matrix costs O(V²) space — wasteful for sparse city graphs
-  - List costs O(V + E) space — city graphs are sparse (avg degree ~3-4)
+UrbanPath — Graph core (Dev A · Sham)
+Supports both real OSM data and synthetic fallback.
 """
 
 import math
+import json
+import os
+from typing import Dict, List, Optional, Tuple
 
+
+# ── Haversine ────────────────────────────────────────────────────────────────
+
+def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in km (Haversine formula)."""
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+# ── Node ─────────────────────────────────────────────────────────────────────
 
 class Node:
-    """An intersection in the road network."""
-    def __init__(self, node_id: int, lat: float, lon: float, name: str = ""):
-        self.id = node_id
+    __slots__ = ("id", "lat", "lon", "name")
+
+    def __init__(self, id: str, lat: float, lon: float, name: str = ""):
+        self.id = id
         self.lat = lat
         self.lon = lon
+        self.name = name or f"Node {id}"
+
+    def __repr__(self):
+        return f"Node({self.id}, {self.lat:.5f}, {self.lon:.5f})"
+
+
+# ── Edge ─────────────────────────────────────────────────────────────────────
+
+class Edge:
+    __slots__ = ("from_id", "to_id", "weight", "name")
+
+    def __init__(self, from_id: str, to_id: str, weight: float, name: str = ""):
+        self.from_id = from_id
+        self.to_id = to_id
+        self.weight = weight   # km
         self.name = name
 
     def __repr__(self):
-        return f"Node({self.id}, {self.name or f'{self.lat:.4f},{self.lon:.4f}'})"
+        return f"Edge({self.from_id}→{self.to_id}, {self.weight:.4f} km)"
 
 
-class Edge:
-    """A directed road segment between two intersections."""
-    def __init__(self, src: int, dst: int, weight: float, road_name: str = ""):
-        self.src = src
-        self.dst = dst
-        self.weight = weight        # distance in km × traffic factor
-        self.road_name = road_name
-
-    def __repr__(self):
-        return f"Edge({self.src}→{self.dst}, w={self.weight:.2f})"
-
+# ── Graph ─────────────────────────────────────────────────────────────────────
 
 class Graph:
-    """
-    Directed weighted graph using adjacency list representation.
-    Supports both directed and undirected (bidirectional) edges.
-    """
+    """Adjacency-list directed graph with integer-index access for algorithms."""
 
     def __init__(self):
-        self.nodes: dict[int, Node] = {}
-        self.adj: dict[int, list[Edge]] = {}    # adjacency list
-        self._edge_count = 0
+        self.nodes: Dict[str, Node] = {}
+        self.adj: Dict[str, List[Tuple[str, float]]] = {}
+        self._node_list: List[str] = []   # ordered → integer indexing
 
-    # ── BUILD ─────────────────────────────────────────────────────────────────
+    # ── Mutation ──────────────────────────────────────────────────────────────
 
-    def add_node(self, node_id: int, lat: float, lon: float, name: str = "") -> None:
-        self.nodes[node_id] = Node(node_id, lat, lon, name)
-        if node_id not in self.adj:
-            self.adj[node_id] = []
+    def add_node(self, node: Node):
+        if node.id not in self.nodes:
+            self.nodes[node.id] = node
+            self.adj[node.id] = []
+            self._node_list.append(node.id)
 
-    def add_edge(self, src: int, dst: int, weight: float,
-                 bidirectional: bool = True, road_name: str = "") -> None:
-        """Add a weighted edge. Bidirectional by default (most roads)."""
-        self.adj[src].append(Edge(src, dst, weight, road_name))
-        self._edge_count += 1
-        if bidirectional:
-            self.adj[dst].append(Edge(dst, src, weight, road_name))
-            self._edge_count += 1
+    def add_edge(self, edge: Edge):
+        if edge.from_id not in self.adj:
+            self.adj[edge.from_id] = []
+        self.adj[edge.from_id].append((edge.to_id, edge.weight))
 
-    # ── QUERIES ───────────────────────────────────────────────────────────────
+    # ── Integer-index access (for Dijkstra / A* / BFS) ───────────────────────
 
-    def neighbors(self, node_id: int) -> list[Edge]:
-        return self.adj.get(node_id, [])
+    def get_node_by_index(self, idx: int) -> Optional[Node]:
+        if 0 <= idx < len(self._node_list):
+            return self.nodes.get(self._node_list[idx])
+        return None
 
-    def haversine(self, u: int, v: int) -> float:
-        """
-        Great-circle distance between two nodes in km.
-        Used as the admissible heuristic in A*.
-        """
-        R = 6371.0  # Earth radius in km
-        lat1, lon1 = math.radians(self.nodes[u].lat), math.radians(self.nodes[u].lon)
-        lat2, lon2 = math.radians(self.nodes[v].lat), math.radians(self.nodes[v].lon)
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-        return R * 2 * math.asin(math.sqrt(a))
+    def index_of(self, node_id: str) -> int:
+        try:
+            return self._node_list.index(node_id)
+        except ValueError:
+            return -1
 
-    def all_edges(self) -> list[tuple]:
-        """Return all edges as (weight, src, dst) — used by Kruskal."""
-        seen = set()
+    def neighbors_by_index(self, idx: int) -> List[Tuple[int, float]]:
+        """Return neighbors as (neighbor_index, weight) pairs."""
+        node_id = self._node_list[idx] if 0 <= idx < len(self._node_list) else None
+        if node_id is None:
+            return []
         result = []
-        for src, edges in self.adj.items():
-            for e in edges:
-                key = (min(src, e.dst), max(src, e.dst))
-                if key not in seen:
-                    seen.add(key)
-                    result.append((e.weight, src, e.dst))
+        for nbr_id, w in self.adj.get(node_id, []):
+            nbr_idx = self.index_of(nbr_id)
+            if nbr_idx >= 0:
+                result.append((nbr_idx, w))
         return result
 
-    @property
-    def num_nodes(self) -> int:
+    # ── Metrics ───────────────────────────────────────────────────────────────
+
+    def node_count(self) -> int:
         return len(self.nodes)
 
-    @property
-    def num_edges(self) -> int:
-        return self._edge_count
+    def edge_count(self) -> int:
+        return sum(len(v) for v in self.adj.values())
 
-    def __repr__(self):
-        return f"Graph(V={self.num_nodes}, E={self.num_edges})"
+    def all_edges(self) -> List[Tuple[str, str, float]]:
+        return [
+            (from_id, to_id, w)
+            for from_id, nbrs in self.adj.items()
+            for to_id, w in nbrs
+        ]
 
+    # ── Serialisation (for /graph API and D3 visualiser) ─────────────────────
 
-# ── DEMO ─────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    g = Graph()
-    g.add_node(0, 13.0827, 80.2707, "Central Station")
-    g.add_node(1, 13.0500, 80.2824, "Marina Beach")
-    g.add_node(2, 13.0368, 80.2676, "Mylapore")
-    g.add_node(3, 13.0012, 80.2565, "Adyar")
-
-    g.add_edge(0, 1, 4.2, road_name="Anna Salai")
-    g.add_edge(1, 2, 2.1, road_name="Kamaraj Salai")
-    g.add_edge(2, 3, 3.8, road_name="TTK Road")
-    g.add_edge(0, 2, 5.5, road_name="Inner Ring Road")
-
-    print(g)
-    print("Neighbors of node 0:", g.neighbors(0))
-    print("Haversine 0→3:", round(g.haversine(0, 3), 3), "km")
+    def to_dict(self, max_nodes: int = 300) -> dict:
+        """Return a bounded subgraph suitable for the D3 frontend."""
+        node_ids = self._node_list[:max_nodes]
+        node_set = set(node_ids)
+        nodes_out = []
+        for nid in node_ids:
+            n = self.nodes[nid]
+            nodes_out.append({
+                "id": nid,
+                "index": self.index_of(nid),
+                "lat": n.lat,
+                "lon": n.lon,
+                "name": n.name,
+            })
+        edges_out = []
+        for nid in node_ids:
+            for nbr_id, w in self.adj.get(nid, []):
+                if nbr_id in node_set:
+                    edges_out.append({
+                        "from": nid,
+                        "to": nbr_id,
+                        "weight": round(w, 4),
+                    })
+        return {
+            "total_nodes": self.node_count(),
+            "total_edges": self.edge_count(),
+            "shown_nodes": len(nodes_out),
+            "nodes": nodes_out,
+            "edges": edges_out,
+        }

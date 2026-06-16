@@ -1,117 +1,106 @@
 """
-Graph Generator — Synthetic City Graph for Development & Testing
-Developer A: Sham
+UrbanPath — Graph loader (Dev A · Sham)
 
-Generates a realistic road network for Chennai (or any bounding box)
-without requiring a live OpenStreetMap API call during development.
+Priority:
+  1. Real OpenStreetMap data  →  data/chennai_graph.json  (run download_osm.py once)
+  2. Synthetic fallback grid  →  used during development / CI
 
-The generated graph approximates a grid-with-noise layout:
-  - Grid intersections with random lat/lon offsets (realistic jitter)
-  - Edge weights = Haversine distance × traffic multiplier
-  - Traffic multiplier drawn from a realistic distribution
-
-For production, replace with OSM data loader.
+The OSM graph gives 50K+ real Chennai road nodes with actual lat/lon and
+road names. The synthetic graph is a uniform grid for algorithm testing.
 """
 
+import json
 import math
+import os
 import random
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from core.graph import Edge, Graph, Node, haversine
+
+OSM_PATH = os.path.join(os.path.dirname(__file__), "chennai_graph.json")
 
 
-def _haversine(lat1, lon1, lat2, lon2) -> float:
-    R = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    return R * 2 * math.asin(math.sqrt(a))
+# ── OSM loader ────────────────────────────────────────────────────────────────
 
+def load_graph_from_osm(path: str = OSM_PATH) -> Graph:
+    """Load real Chennai road network from pre-downloaded OSM JSON."""
+    with open(path) as f:
+        data = json.load(f)
 
-def generate_city_graph(
-    rows: int = 10,
-    cols: int = 10,
-    lat_origin: float = 13.00,
-    lon_origin: float = 80.20,
-    lat_step: float = 0.012,
-    lon_step: float = 0.014,
-    seed: int = 42,
-) -> dict:
-    """
-    Generate a synthetic city graph as a dictionary with nodes and edges.
-
-    Returns
-    -------
-    {
-        "nodes": [{id, lat, lon, name}, ...],
-        "edges": [{src, dst, weight, road_name}, ...]
-    }
-    """
-    rng = random.Random(seed)
-    nodes = []
-    edges = []
-
-    node_id = 0
-    grid = {}   # (r, c) -> node_id
-
-    # Place nodes on a jittered grid
-    for r in range(rows):
-        for c in range(cols):
-            lat = lat_origin + r * lat_step + rng.uniform(-0.002, 0.002)
-            lon = lon_origin + c * lon_step + rng.uniform(-0.002, 0.002)
-            nodes.append({
-                "id": node_id,
-                "lat": round(lat, 6),
-                "lon": round(lon, 6),
-                "name": f"Intersection_{r}_{c}",
-            })
-            grid[(r, c)] = node_id
-            node_id += 1
-
-    # Connect grid neighbours (right and down), plus a few diagonal shortcuts
-    for r in range(rows):
-        for c in range(cols):
-            uid = grid[(r, c)]
-            u_node = nodes[uid]
-
-            # Right neighbour
-            if c + 1 < cols:
-                vid = grid[(r, c + 1)]
-                v_node = nodes[vid]
-                dist = _haversine(u_node["lat"], u_node["lon"], v_node["lat"], v_node["lon"])
-                traffic = rng.uniform(1.0, 2.5)
-                edges.append({
-                    "src": uid, "dst": vid,
-                    "weight": round(dist * traffic, 4),
-                    "road_name": f"H_Road_{r}_{c}",
-                })
-
-            # Down neighbour
-            if r + 1 < rows:
-                vid = grid[(r + 1, c)]
-                v_node = nodes[vid]
-                dist = _haversine(u_node["lat"], u_node["lon"], v_node["lat"], v_node["lon"])
-                traffic = rng.uniform(1.0, 2.5)
-                edges.append({
-                    "src": uid, "dst": vid,
-                    "weight": round(dist * traffic, 4),
-                    "road_name": f"V_Road_{r}_{c}",
-                })
-
-    return {"nodes": nodes, "edges": edges}
-
-
-def load_graph_from_dict(data: dict):
-    """Convert the generated dict into a Graph object."""
-    from core.graph import Graph
     g = Graph()
-    for n in data["nodes"]:
-        g.add_node(n["id"], n["lat"], n["lon"], n["name"])
+    for nid, n in data["nodes"].items():
+        g.add_node(Node(str(nid), float(n["lat"]), float(n["lon"]), n.get("name", "")))
+
     for e in data["edges"]:
-        g.add_edge(e["src"], e["dst"], e["weight"],
-                   bidirectional=True, road_name=e["road_name"])
+        g.add_edge(Edge(str(e["from"]), str(e["to"]), float(e["weight"]), e.get("name", "")))
+
     return g
 
 
-if __name__ == "__main__":
-    data = generate_city_graph(rows=5, cols=5)
-    print(f"Nodes: {len(data['nodes'])}, Edges: {len(data['edges'])}")
-    g = load_graph_from_dict(data)
-    print(g)
+# ── Synthetic fallback ────────────────────────────────────────────────────────
+
+def generate_city_graph(
+    rows: int = 32,
+    cols: int = 32,
+    origin_lat: float = 13.0500,
+    origin_lon: float = 80.2100,
+) -> Graph:
+    """
+    Synthetic grid graph centred on Chennai.
+    Default 32×32 = 1 024 nodes with ~1.1 km spacing.
+    Used when OSM data hasn't been downloaded yet.
+    """
+    g = Graph()
+    spacing = 0.009   # ≈ 1 km
+
+    node_ids: dict = {}
+    for r in range(rows):
+        for c in range(cols):
+            nid = str(r * cols + c)
+            lat = origin_lat + r * spacing
+            lon = origin_lon + c * spacing
+            g.add_node(Node(nid, lat, lon, f"Intersection {nid}"))
+            node_ids[(r, c)] = nid
+
+    rng = random.Random(42)
+    for r in range(rows):
+        for c in range(cols):
+            nid = node_ids[(r, c)]
+            n = g.nodes[nid]
+            for dr, dc in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nr, nc = r + dr, c + dc
+                if (nr, nc) in node_ids:
+                    nbr_id = node_ids[(nr, nc)]
+                    nb = g.nodes[nbr_id]
+                    w = haversine(n.lat, n.lon, nb.lat, nb.lon)
+                    w *= rng.uniform(1.0, 1.4)   # road-tortuosity factor
+                    g.add_edge(Edge(nid, nbr_id, round(w, 5)))
+
+    return g
+
+
+# ── Public entry point ────────────────────────────────────────────────────────
+
+def get_graph() -> Graph:
+    """Return the best available graph (OSM preferred, synthetic fallback)."""
+    if os.path.exists(OSM_PATH):
+        print(f"[graph] Loading OSM Chennai graph from {OSM_PATH} …")
+        g = load_graph_from_osm()
+        print(f"[graph] {g.node_count():,} nodes  |  {g.edge_count():,} edges  (OpenStreetMap)")
+        return g
+
+    print("[graph] OSM data not found — using 1 024-node synthetic graph.")
+    print("[graph] For real Chennai data run:  python3 data/download_osm.py")
+    return generate_city_graph()
+
+
+def load_graph_from_dict(data: dict) -> Graph:
+    """Deserialise a graph from a plain dict (used in tests / API)."""
+    g = Graph()
+    for n in data.get("nodes", []):
+        g.add_node(Node(n["id"], n["lat"], n["lon"], n.get("name", "")))
+    for e in data.get("edges", []):
+        g.add_edge(Edge(e["from"], e["to"], e["weight"], e.get("name", "")))
+    return g

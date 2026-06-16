@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>UrbanPath — Graph Visualizer</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <span class="nav-brand">UrbanPath</span>
+  <span class="nav-sub">City Graph Engine</span>
+  <a href="index.html"      class="nav-btn">01 · Map Explorer</a>
+  <a href="delivery.html"   class="nav-btn">02 · Delivery Planner</a>
+  <a href="visualizer.html" class="nav-btn active">03 · Visualizer</a>
+</nav>
+
+<!-- ── PAGE ── -->
+<div class="page" style="padding-top:52px;">
+  <div class="page-header" style="padding:28px 32px 0;">
+    <span class="eyebrow">Developer A · Sham</span>
+    <h1 class="page-h1">Graph Visualizer</h1>
+    <p class="page-desc">Watch Dijkstra and BFS explore the road graph — step by step.</p>
+  </div>
+
+  <div style="display:flex;gap:24px;padding:24px 32px;height:calc(100vh - 160px);">
+
+    <!-- ── Controls sidebar ── -->
+    <div class="sidebar" style="width:280px;flex-shrink:0;overflow-y:auto;">
+
+      <div>
+        <span class="field-label">Algorithm</span>
+        <div class="toggle-row">
+          <button class="toggle-btn active" id="btnDijkstra" onclick="setAlgo('dijkstra')">Dijkstra</button>
+          <button class="toggle-btn" id="btnBFS" onclick="setAlgo('bfs')">BFS</button>
+        </div>
+      </div>
+
+      <div>
+        <span class="field-label">Source Node</span>
+        <input type="number" id="vizSrc" value="0" min="0" style="width:100%;"/>
+      </div>
+      <div>
+        <span class="field-label">Destination Node</span>
+        <input type="number" id="vizDst" value="30" min="0" style="width:100%;"/>
+      </div>
+
+      <button class="btn-primary" onclick="runVisualization()" id="runBtn">
+        RUN →
+      </button>
+
+      <!-- Stats -->
+      <div id="statsBox" style="display:none;">
+        <hr class="divider"/>
+        <span class="eyebrow">Stats</span>
+        <div class="stats-row" style="flex-direction:column;gap:12px;margin-top:8px;">
+          <div>
+            <span class="field-label">Algorithm</span>
+            <div class="stat-val" id="statAlgo">—</div>
+          </div>
+          <div>
+            <span class="field-label">Total Steps</span>
+            <div class="stat-val" id="statSteps">—</div>
+          </div>
+          <div>
+            <span class="field-label">Path Length</span>
+            <div class="stat-val" id="statPath">—</div>
+          </div>
+          <div>
+            <span class="field-label">Nodes Visited</span>
+            <div class="stat-val" id="statVisited">—</div>
+          </div>
+        </div>
+        <hr class="divider"/>
+        <span class="field-label">Playback Speed</span>
+        <div class="toggle-row" style="margin-top:6px;">
+          <button class="toggle-btn" onclick="setSpeed(300)">Slow</button>
+          <button class="toggle-btn active" onclick="setSpeed(80)">Normal</button>
+          <button class="toggle-btn" onclick="setSpeed(20)">Fast</button>
+        </div>
+        <button class="btn-primary" style="margin-top:12px;background:var(--green);" onclick="replay()">
+          ▶ Replay
+        </button>
+      </div>
+
+      <!-- Legend -->
+      <hr class="divider"/>
+      <span class="eyebrow">Legend</span>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;font-size:13px;font-family:'IBM Plex Mono',monospace;">
+        <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:50%;background:#14213D;border:2px solid #14213D;"></div> Unvisited</div>
+        <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:50%;background:#E8662C;border:2px solid #E8662C;"></div> Current</div>
+        <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:50%;background:#6b7a99;border:2px solid #6b7a99;"></div> Visited</div>
+        <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:50%;background:#FFE9A8;border:2px solid #E8662C;"></div> Frontier</div>
+        <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:50%;background:#0E8A6D;border:2px solid #0E8A6D;"></div> Final Path</div>
+      </div>
+
+    </div>
+
+    <!-- ── D3 canvas ── -->
+    <div style="flex:1;position:relative;border:2px solid var(--ink);box-shadow:6px 6px 0 var(--ink);overflow:hidden;background:var(--paper);" id="svgWrap">
+      <div id="loadingMsg" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--muted);text-align:center;">
+        Click RUN → to visualize the traversal
+      </div>
+      <svg id="vizSvg" width="100%" height="100%"></svg>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000/api';
+let _algo = 'dijkstra';
+let _speed = 80;
+let _animTimer = null;
+let _stepsData = [];
+let _finalPath = [];
+let _graphNodes = [];
+let _graphEdges = [];
+let _simulation = null;
+let _svg = null;
+let _nodeEl = null;
+let _linkEl = null;
+
+function setAlgo(a) {
+  _algo = a;
+  document.getElementById('btnDijkstra').classList.toggle('active', a === 'dijkstra');
+  document.getElementById('btnBFS').classList.toggle('active', a === 'bfs');
+}
+
+function setSpeed(ms) {
+  _speed = ms;
+  document.querySelectorAll('.toggle-row .toggle-btn').forEach(b => {
+    if (b.textContent === 'Slow') b.classList.toggle('active', ms === 300);
+    if (b.textContent === 'Normal') b.classList.toggle('active', ms === 80);
+    if (b.textContent === 'Fast') b.classList.toggle('active', ms === 20);
+  });
+}
+
+async function runVisualization() {
+  const src = parseInt(document.getElementById('vizSrc').value) || 0;
+  const dst = parseInt(document.getElementById('vizDst').value) || 30;
+  const btn = document.getElementById('runBtn');
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+
+  try {
+    // Fetch graph structure + traversal steps in parallel
+    const [gRes, vRes] = await Promise.all([
+      fetch(`${API}/graph`),
+      fetch(`${API}/visualize?src=${src}&dst=${dst}&algorithm=${_algo}&max_nodes=200`)
+    ]);
+    const gData = await gRes.json();
+    const vData = await vRes.json();
+
+    _graphNodes = gData.nodes || [];
+    _graphEdges = gData.edges || [];
+    _stepsData  = vData.steps || [];
+    _finalPath  = new Set(vData.final_path || []);
+
+    // Update stats
+    document.getElementById('statsBox').style.display = 'block';
+    document.getElementById('statAlgo').textContent = vData.algorithm.toUpperCase();
+    document.getElementById('statSteps').textContent = vData.total_steps;
+    document.getElementById('statPath').textContent = vData.final_path.length + ' nodes';
+    document.getElementById('statVisited').textContent = vData.steps.length;
+
+    document.getElementById('loadingMsg').style.display = 'none';
+    buildGraph();
+    animate(0);
+
+  } catch(e) {
+    alert('Error: make sure the server is running (python3 -m uvicorn api.main:app --reload)');
+  } finally {
+    btn.textContent = 'RUN →';
+    btn.disabled = false;
+  }
+}
+
+function buildGraph() {
+  if (_animTimer) clearInterval(_animTimer);
+
+  const wrap = document.getElementById('svgWrap');
+  const W = wrap.clientWidth;
+  const H = wrap.clientHeight;
+
+  const svg = d3.select('#vizSvg')
+    .attr('width', W)
+    .attr('height', H);
+  svg.selectAll('*').remove();
+  _svg = svg;
+
+  // Map lat/lon → screen coords
+  const lats = _graphNodes.map(n => n.lat);
+  const lons = _graphNodes.map(n => n.lon);
+  const latMin = Math.min(...lats), latMax = Math.max(...lats);
+  const lonMin = Math.min(...lons), lonMax = Math.max(...lons);
+
+  const pad = 40;
+  const scaleX = (lon) => pad + (lon - lonMin) / (lonMax - lonMin + 1e-9) * (W - pad * 2);
+  const scaleY = (lat) => H - pad - (lat - latMin) / (latMax - latMin + 1e-9) * (H - pad * 2);
+
+  const nodeMap = {};
+  _graphNodes.forEach(n => {
+    n.x = scaleX(n.lon);
+    n.y = scaleY(n.lat);
+    nodeMap[n.id] = n;
+  });
+
+  // Links
+  const linkGroup = svg.append('g').attr('class', 'links');
+  _linkEl = linkGroup.selectAll('line')
+    .data(_graphEdges.filter(e => nodeMap[e.from] && nodeMap[e.to]))
+    .enter().append('line')
+    .attr('x1', e => nodeMap[e.from].x)
+    .attr('y1', e => nodeMap[e.from].y)
+    .attr('x2', e => nodeMap[e.to].x)
+    .attr('y2', e => nodeMap[e.to].y)
+    .attr('stroke', '#d8dee8')
+    .attr('stroke-width', 1);
+
+  // Nodes
+  const nodeGroup = svg.append('g').attr('class', 'nodes');
+  _nodeEl = nodeGroup.selectAll('circle')
+    .data(_graphNodes)
+    .enter().append('circle')
+    .attr('cx', n => n.x)
+    .attr('cy', n => n.y)
+    .attr('r', 5)
+    .attr('fill', '#14213D')
+    .attr('stroke', '#F4F7FB')
+    .attr('stroke-width', 1)
+    .append('title').text(n => `Node ${n.index} — ${n.name || n.id}`);
+}
+
+function animate(stepIdx) {
+  if (_animTimer) clearInterval(_animTimer);
+  if (!_stepsData.length) return;
+
+  let i = stepIdx;
+  _animTimer = setInterval(() => {
+    if (i >= _stepsData.length) {
+      clearInterval(_animTimer);
+      // Colour final path
+      showFinalPath();
+      return;
+    }
+    const step = _stepsData[i];
+    const visitedSet = new Set(step.visited || []);
+    const frontierSet = new Set(step.frontier || []);
+    const current = step.current;
+
+    _nodeEl.select(function(d, idx) { return this; });
+
+    d3.select('#vizSvg').select('g.nodes').selectAll('circle')
+      .attr('fill', function(d) {
+        const idx = d.index;
+        if (idx === current)         return '#E8662C';
+        if (_finalPath.has(idx))     return '#0E8A6D';
+        if (visitedSet.has(idx))     return '#6b7a99';
+        if (frontierSet.has(idx))    return '#FFE9A8';
+        return '#14213D';
+      })
+      .attr('r', function(d) {
+        return d.index === current ? 8 : 5;
+      })
+      .attr('stroke', function(d) {
+        return d.index === current ? '#E8662C' : '#F4F7FB';
+      });
+
+    i++;
+  }, _speed);
+}
+
+function showFinalPath() {
+  d3.select('#vizSvg').select('g.nodes').selectAll('circle')
+    .attr('fill', function(d) {
+      if (_finalPath.has(d.index)) return '#0E8A6D';
+      return '#d8dee8';
+    })
+    .attr('r', function(d) {
+      return _finalPath.has(d.index) ? 7 : 4;
+    });
+
+  // Highlight path edges
+  const pathArr = Array.from(_finalPath);
+  const pathSet = new Set();
+  for (let i = 0; i < pathArr.length - 1; i++) {
+    pathSet.add(`${pathArr[i]}-${pathArr[i+1]}`);
+  }
+  d3.select('#vizSvg').select('g.links').selectAll('line')
+    .attr('stroke', function(d) {
+      const fromNode = _graphNodes.find(n => n.id === d.from);
+      const toNode   = _graphNodes.find(n => n.id === d.to);
+      if (!fromNode || !toNode) return '#d8dee8';
+      if (pathSet.has(`${fromNode.index}-${toNode.index}`)) return '#0E8A6D';
+      return '#d8dee8';
+    })
+    .attr('stroke-width', function(d) {
+      const fromNode = _graphNodes.find(n => n.id === d.from);
+      const toNode   = _graphNodes.find(n => n.id === d.to);
+      if (!fromNode || !toNode) return 1;
+      return pathSet.has(`${fromNode.index}-${toNode.index}`) ? 3 : 1;
+    });
+}
+
+function replay() {
+  buildGraph();
+  animate(0);
+}
+</script>
+
+</body>
+</html>
