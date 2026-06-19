@@ -43,14 +43,14 @@ UrbanPath is a portfolio project built by two people to prove that the algorithm
 
 No algorithm libraries were used. Every data structure - the graph, heap, trie, segment tree, union-find - is hand-written.
 
-**Dev A - Sham:** Graph, Dijkstra, A*, BFS Isochrone, MinHeap, graph data layer
-**Dev B - Ajith:** Trie, Held-Karp TSP, K-means++, Kruskal MST, Segment Tree, Union-Find, Redis caching, frontend
+**Dev A - Sham:** Graph, Dijkstra, A*, BFS Isochrone, MinHeap, graph data layer, Redis caching.
+**Dev B - Ajith:** Trie, Held-Karp TSP, K-means++, Kruskal MST, Segment Tree, Union-Find, frontend
 
 ---
 
 ## Features
 
-**Map Explorer (Dev B)**
+**Map Explorer (Dev A)**
 - Trie-based location search over 60 Chennai POIs — O(k) prefix lookup
 - A* and Dijkstra routing — toggle between them to compare
 - Results plotted on a Leaflet map with the exact path drawn
